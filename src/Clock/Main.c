@@ -27,97 +27,87 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-// Version of common controls to link to. Changes the appearance of controls. https://learn.microsoft.com/en-us/windows/win32/controls/common-control-versions
+ // Version of common controls to link to. Changes the appearance of controls. https://learn.microsoft.com/en-us/windows/win32/controls/common-control-versions
 #pragma comment(linker,"\"/manifestdependency:type='win32' \
 name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
 processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
-// Functions wrappers
-#define SetFont(hWnd, hFont) SendMessage(hWnd, WM_SETFONT, (WPARAM)hFont, TRUE)
-#define MAKECOLOR16(n) { n * 257 }
-#define RGB16(r, g, b) { (r) * 257, (g) * 257, (b) * 257, 0 } // Used to calculate TRIVERTEX values, which are 16-bit values instead of regular RGB values, which are 8-bit.
-
 // Structure to hold color information after being parsed
+// Used for the custom color option. See ParseCustomColor
 typedef struct GradientColor {
 	TRIVERTEX tvColor1;
 	TRIVERTEX tvColor2;
 } GradientColor;
 
+// Structure to hold registry values to hopefully optimize the memory footprint.
+// Prevents repeated calls of Registry keys to check the value
 typedef struct Config {
 	BOOL Gradient;
 	BOOL DVDLogo;
 	BOOL CustomColor;
 } Config;
 
-// Note: warning MSB8051 cannot be disabled via the editor. If you would like to disable the warning,
-// you have to edit your Toolset.targets for the project settings.
-// https://stackoverflow.com/questions/53841470/how-to-disable-warning-msb8051-support-for-targeting-windows-xp-is-deprecated
-// Yes, I know that my code is very messy and unfortunately, I don't know how to fix it.
-
-// To-do: Fix sizing bug where the text will get stuck outside of the screen when sizing.
-
 // Global variables
-// Variables should be completely Hungarian Notation-compliant.
-const WCHAR* g_szMainClass = L"ClockWndClass";					// Constant string for registering the main window class. https://learn.microsoft.com/en-us/windows/win32/intl/registering-window-classes
-const WCHAR* g_szSettingsClass = L"ClockSettingsWndClass";		// Same as above, except this one is for the Settings sub-window.
-const WCHAR* g_szMainFont = L"Arial";							// Font to be rendered with the text. Change this to make the text look different!
-const WCHAR* g_szRegKey = L"Software\\Jamie\\Clock\\Settings";	// Constant string for getting where the registry values for settings are stored. Based off of the following format: 'Software\Company Name\Application Name\Settings'			
-HINSTANCE g_hInst;												// Global variable for storing the handle for the instance for use whenever it is needed. I prefer this method over passing an HINSTANCE into each function.
-HFONT g_hfMainFont;												// Global variable for storing the main font that will be used to render the clock text. 
-HFONT g_hfBtnFont;												// Same as above, except this one is rendered smaller to fit in buttons. Is used in the settings sub-window. 
-HWND g_hWndMain;												// Global variable for storing the window handle for the main window of the application. This is the window where the clock itself is rendered. See MainWndProc. 
-HWND g_hWndClockOut;											// Global variable for storing the handle of the static control where the clock text is rendered. This is where the magic happens! The control is set to be the same dimensions as the window, thus giving it range of the entire window to move and bounce. See RenderText. 
-HWND g_hWndSettings;											// Global variable for storing the window handle for the settings window of the application. This is where the settings options are rendered. See SettingsWndProc & SaveConfiguration. 
-HWND g_hWndSettingsSaveBtn;										// Global variable for storing the handle of the button for saving settings in the settings window. 
-HWND g_hWndSettingsGradientCheck;								// Global variable for storing the handle of the check box (button. See https://learn.microsoft.com/en-us/windows/win32/menurc/autocheckbox-control) for toggling the gradient rendering option on or off. 
-HWND g_hWndSettingsDvdLogoCheck;								// Same as above, except this toggles the bouncing, DVD logo effect when the text is rendered.
-HWND g_hWndSettingsCustomColorsCheck;
-HACCEL g_hAccel;												// Accelerator for keyboard shortcuts for the About dialog and Settings window. Defined in resource script (Resource.rc). 
-BOOL g_bIsFullScreen = FALSE;									// Used for full screen functionality.
-BOOL g_bUse24HourFormat = TRUE;									// Used for the time format switch. Added after everything else in this list.
-BOOL g_bShowDate = TRUE;										// Used for the date switch. Also added after everything else.
-BOOL g_bSettingsShown = FALSE;
-RECT g_rcWindow;												// Used for full screen functionality.
-GradientColor g_GradientColor;
-COLORREF g_bgColor;
-Config g_Config;
-#define TIMER_ID 0x101											// ID for refresh timer for renderer. See MainWndProc.
-#define SETTINGS_SAVE_BTN_ID			0x1001					// ID for save button in the settings window. Saves configuration to registry upon push.
-#define SETTINGS_GRADIENT_CHECK_ID		0x1002					// ID for check box in settings window for the gradient option. Assigned an ID to get it's check state.
-#define SETTINGS_DVDLOGO_CHECK_ID		0x1003					// Same as above.
-#define SETTINGS_CUSTOMCOLORS_CHECK_ID	0x1004
+const WCHAR* g_szMainClass = L"ClockWndClass"; // Constant string for registering the main window class. https://learn.microsoft.com/en-us/windows/win32/intl/registering-window-classes
+const WCHAR* g_szSettingsClass = L"ClockSettingsWndClass"; // Same as above, except this one is for the Settings sub-window.
+const WCHAR* g_szMainFont = L"Arial"; // Font to be rendered with the text. Change this to make the text look different!
+const WCHAR* g_szRegKey = L"Software\\Jamie\\Clock\\Settings"; // Constant string for getting where the registry values for settings are stored. Based off of the following format: 'Software\Company Name\Application Name\Settings'			
+HINSTANCE g_hInst; // Global variable for storing the handle for the instance for use whenever it is needed. I prefer this method over passing an HINSTANCE into each function.
+HFONT g_hfMainFont; // Global variable for storing the main font that will be used to render the clock text. 
+HFONT g_hfBtnFont; // Same as above, except this one is rendered smaller to fit in buttons. Is used in the settings sub-window. 
+HWND g_hWndMain; // Global variable for storing the window handle for the main window of the application. This is the window where the clock itself is rendered. See MainWndProc. 
+HWND g_hWndClockOut; // Global variable for storing the handle of the static control where the clock text is rendered. This is where the magic happens! The control is set to be the same dimensions as the window, thus giving it range of the entire window to move and bounce. See RenderText. 
+HWND g_hWndSettings; // Global variable for storing the window handle for the settings window of the application. This is where the settings options are rendered. See SettingsWndProc & SaveConfiguration. 
+HWND g_hWndSettingsSaveBtn;	// Global variable for storing the handle of the button for saving settings in the settings window. 
+HWND g_hWndSettingsGradientCheck; // Global variable for storing the handle of the check box (button. See https://learn.microsoft.com/en-us/windows/win32/menurc/autocheckbox-control) for toggling the gradient rendering option on or off. 
+HWND g_hWndSettingsDvdLogoCheck; // Same as above, except this toggles the bouncing, DVD logo effect when the text is rendered.
+HWND g_hWndSettingsCustomColorsCheck; // Same as above, except this toggles using a custom color. See 1.5.0 changelog
+HACCEL g_hAccel; // Accelerator for keyboard shortcuts for the About dialog and Settings window. Defined in resource script (Resource.rc). 
+BOOL g_bIsFullScreen = FALSE; // Used for full screen functionality.
+BOOL g_bUse24HourFormat = TRUE;	// Used for the time format switch. Added after everything else in this list.
+BOOL g_bShowDate = TRUE; // Used for the date switch. Also added after everything else.
+BOOL g_bSettingsShown = FALSE; // Used to prevent the user from creating as many settings windows as they want.
+RECT g_rcWindow; // Used for full screen functionality.
+GradientColor g_GradientColor; // Check the GradientColor comments
+COLORREF g_bgColor; // Holds the color that is used if a custom color is parsed, but the gradient effect isn't used
+Config g_Config; // Check the Config comments
+#define TIMER_ID 0x101 // ID for refresh timer for renderer. See MainWndProc.
+#define SETTINGS_SAVE_BTN_ID			0x1001 // ID for save button in the settings window. Saves configuration to registry upon push.
+#define SETTINGS_GRADIENT_CHECK_ID		0x1002 // ID for check box in settings window for the gradient option. Assigned an ID to get it's check state.
+#define SETTINGS_DVDLOGO_CHECK_ID		0x1003 // Same as above.
+#define SETTINGS_CUSTOMCOLORS_CHECK_ID	0x1004 // Same as above.
 
 // Forward declaration of functions
-int Clamp(int, int, int);										// Clamping function since native C does not feature one.
-ATOM RegisterMainClass(HINSTANCE);								// Registers the class for the main window.
-BOOL InitInstance(HINSTANCE, int);								// Stores the HINSTANCE, creates the fonts, and shows the main window.
-void CreateClock(HWND);											// Creates the static text control that the clock is rendered to. Takes the HWND parameter to use as the parent window for the text.
-void ResizeText(HWND);											// Function to dynamically resize the text.
-void GetCurrentDateTime(WCHAR*, size_t);						// Gets the system time and formats a wide-string to display it based off of the formats specified above. Takes a pointer to a WCHAR and a size_t to get the size of the buffer. https://cplusplus.com/reference/cwchar/swprintf/ 
-ATOM RegisterSettingsClass(HINSTANCE);							// Registers the class for the settings sub-window. 
-BOOL InitSettings(void);										// Does the same as InitInstance, except for settings. 
-void CreateSettingsControls(HWND);								// Creates and draws the controls for the settings window. 
-void SaveConfiguration(void);									// Gets the check state of the toggles and saves it to the registry keys. 
-BOOL GradientUsed(void);										// Reads the UseGradient value in the registry key for the application. This function determines whether the red gradient background will be rendered. 
-BOOL DVDLogo(void);												// Does the same as above, except it read the DVDLogoEffect value. Determines whether the text moves and bounces around the screen. 
-void RestartApplication(void);									// Restarts the application. 
-int FormattedMessageBoxW(HWND, LPCWSTR, LPCWSTR, UINT, ...);	// Formats a Windows message box. 
-void ToggleFullScreen_Monitor1(HWND);							// Toggles full screen for the main window. This goes to the first screen on the computer. 
-void ToggleFullScreen_Monitor2(HWND);
-BOOL RenderText(LPARAM);										// Renders the text for the clock. Called by the loop in the MainWndProc. 
-LRESULT CALLBACK MainWndProc(HWND, UINT, WPARAM, LPARAM);		// The window procedure for the main window. This is where the timer loop is and where the key events and such are. https://learn.microsoft.com/en-us/windows/win32/winmsg/window-procedures 
-LRESULT CALLBACK SettingsWndProc(HWND, UINT, WPARAM, LPARAM);	// Same as above, but, it's for, you guessed it, the settings sub-window! 
-BOOL CALLBACK About_DLGProc(HWND, UINT, WPARAM, LPARAM);		// A little different from the standard window procedure. This doesn't draw it's own controls, it takes messages, but the controls and it's layout are defined in the resource script. https://learn.microsoft.com/en-us/windows/win32/dlgbox/using-dialog-boxes 
-void ChangeTimeFormat(void);									// Changes the time format. I use these functions for simplicity.
-void ChangeShowDate(void);										// Same as above.
-BOOL CustomColor(void);
-void ParseCustomColor();
-BOOL CALLBACK MonitorEnumProc(HMONITOR, HDC, LPRECT, LPARAM);
+int Clamp(int, int, int); // Clamping function since native C does not feature one. Used for parsing RGB values in .color
+ATOM RegisterMainClass(HINSTANCE); // Registers the class for the main window.
+BOOL InitInstance(HINSTANCE, int); // Stores the HINSTANCE, creates the fonts, and shows the main window.
+void CreateClock(HWND);	// Creates the static text control that the clock is rendered to. Takes the HWND parameter to use as the parent window for the text.
+void ResizeText(HWND); // Function to dynamically resize the text.
+void GetCurrentDateTime(WCHAR*, size_t); // Gets the system time and formats a wide-string to display it based off of the formats specified above. Takes a pointer to a WCHAR and a size_t to get the size of the buffer. https://cplusplus.com/reference/cwchar/swprintf/ 
+ATOM RegisterSettingsClass(HINSTANCE); // Registers the class for the settings sub-window. 
+BOOL InitSettings(void); // Does the same as InitInstance, except for settings. 
+void CreateSettingsControls(HWND); // Creates and draws the controls for the settings window. 
+void SaveConfiguration(void); // Gets the check state of the toggles and saves it to the registry keys. 
+BOOL GradientUsed(void); // Reads the UseGradient value in the registry key for the application. This function determines whether the red gradient background will be rendered. 
+BOOL DVDLogo(void); // Does the same as above, except it read the DVDLogoEffect value. Determines whether the text moves and bounces around the screen. 
+void RestartApplication(void); // Restarts the application. 
+int FormattedMessageBoxW(HWND, LPCWSTR, LPCWSTR, UINT, ...); // Formats a Windows message box. 
+void ToggleFullScreen_Monitor1(HWND); // Toggles full screen for the main window. This goes to the first screen on the computer. 
+void ToggleFullScreen_Monitor2(HWND); // Same as above, except this one will go to the second-most monitor on the computer.
+BOOL RenderText(LPARAM); // Renders the text for the clock. Called by the loop in the MainWndProc. 
+LRESULT CALLBACK MainWndProc(HWND, UINT, WPARAM, LPARAM); // The window procedure for the main window. This is where the timer loop is and where the key events and such are. https://learn.microsoft.com/en-us/windows/win32/winmsg/window-procedures 
+LRESULT CALLBACK SettingsWndProc(HWND, UINT, WPARAM, LPARAM); // Same as above, but, it's for, you guessed it, the settings sub-window! 
+BOOL CALLBACK About_DLGProc(HWND, UINT, WPARAM, LPARAM); // A little different from the standard window procedure. This doesn't draw it's own controls, it takes messages, but the controls and it's layout are defined in the resource script. https://learn.microsoft.com/en-us/windows/win32/dlgbox/using-dialog-boxes 
+void ChangeTimeFormat(void); // Changes the time format. I use these functions for simplicity.
+void ChangeShowDate(void); // Same as above.
+BOOL CustomColor(void); // Read the 'CustomColor' registry key to check whether the .color file should be parsed
+void ParseCustomColor(); // Actually parses the 'CustomColor' registry value. Outputs it's results to g_bgColor & g_GradientColor.
+BOOL CALLBACK MonitorEnumProc(HMONITOR, HDC, LPRECT, LPARAM); // Enumerates the monitors connected to the computer. Not exactly sure how this works. https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumdisplaymonitors
 
 // Specific errors I disabled because I either don't know how to fix them, or they don't impact the application.
-#pragma warning(disable : 28251)								// Inconsistent annotations. This one is one I disabled because it doesn't make or break anything. The only time I can think of that this error is actually shown is on the WinMain entry point. https://learn.microsoft.com/en-us/cpp/code-quality/c28251?view=msvc-170
-#pragma warning(disable : 4047)									// Different levels of indirection. Has something to do with pointers. From what I read, it's how many *'s you have to go through to get to the actual data.
-#pragma warning(disable : 4024)									// Different types of formal and actual parameters. If you haven't figured out, I am a novice programmer and have no clue what this does, or how to fix it. All I know, is in debugging, I found no impact that this warning made.
+#pragma warning(disable : 28251) // Inconsistent annotations. This one is one I disabled because it doesn't make or break anything. The only time I can think of that this error is actually shown is on the WinMain entry point. https://learn.microsoft.com/en-us/cpp/code-quality/c28251?view=msvc-170
+#pragma warning(disable : 4047)	// Different levels of indirection. Has something to do with pointers. From what I read, it's how many *'s you have to go through to get to the actual data.
+#pragma warning(disable : 4024)	// Different types of formal and actual parameters. If you haven't figured out, I am a novice programmer and have no clue what this does, or how to fix it. All I know, is in debugging, I found no impact that this warning made.
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine, int nCmdShow) {
 	UNREFERENCED_PARAMETER(hPrevInstance);
 	UNREFERENCED_PARAMETER(lpCmdLine);
@@ -129,7 +119,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 		FormattedMessageBoxW(NULL, L"A severe error occurred while starting up the application! (%lu)\r\nCommon controls failed to initialize.\r\n\r\nPointer to common controls structure: %p\r\n\r\nThe application will now exit.", L"Severe Error!", MB_OK | MB_ICONERROR, GetLastError(), &icex);
 		return GetLastError();
 	}
-	
+
 	// Register the window class and show the window.
 	RegisterMainClass(hInstance);
 
@@ -173,15 +163,18 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow) {
 	// Create the fonts
 	g_hfMainFont = CreateFont(48, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH, g_szMainFont);
 	g_hfBtnFont = CreateFont(16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH, g_szMainFont);
-	
+
+	// Set config structure values to prevent repeated system calls
 	g_Config.CustomColor = CustomColor();
 	g_Config.DVDLogo = DVDLogo();
 	g_Config.Gradient = GradientUsed();
 
+	// Parses the .color file if the setting is set to true
 	if (g_Config.CustomColor) {
 		ParseCustomColor();
 	}
 
+	// Create the main window and show it.
 	g_hWndMain = CreateWindowW(g_szMainClass, L"Clock", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 800, 600, NULL, NULL, hInstance, NULL);
 	if (!g_hWndMain) {
 		return FALSE;
@@ -201,12 +194,10 @@ BOOL CALLBACK About_DLGProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lPara
 		case IDOK:
 			EndDialog(hwndDlg, IDOK);
 			return TRUE;
-		case IDC_SYSLINK2:
-			ShellExecute(NULL, L"open", L"https://github.com/Totally-A-Boar/XPClock/tree/main", NULL, NULL, SW_SHOWNORMAL);
-			break;
 		}
 		break;
 	case WM_CLOSE:
+		// Bug fix. in 1.4, the about dialog would not close when the X button was clicked, because WM_CLOSE was not handled.
 		EndDialog(hwndDlg, 0);
 		break;
 	case WM_DESTROY:
@@ -219,13 +210,11 @@ BOOL CALLBACK About_DLGProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lPara
 }
 
 LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	switch (msg)
-	{
+	switch (msg) {
 	case WM_CREATE:
 		g_hAccel = LoadAccelerators(g_hInst, MAKEINTRESOURCE(IDR_MAINACCEL));
 		CreateClock(hwnd);
-		SetTimer(hwnd, TIMER_ID, 10, NULL); // 10ms for screen effects
-		SetForegroundWindow(hwnd);
+		SetTimer(hwnd, TIMER_ID, 10, NULL);
 		break;
 	case WM_DESTROY:
 		KillTimer(hwnd, TIMER_ID);
@@ -251,7 +240,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
 		case ID_ABOUT: {
 			DialogBox(g_hInst, IDD_ABOUTDLG, hwnd, About_DLGProc);
 		}
-			break;
+					 break;
 		case ID_SETTINGS:
 			if (!g_bSettingsShown) {
 				InitSettings();
@@ -268,12 +257,17 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
 			ToggleFullScreen_Monitor1(hwnd);
 		}
 		else if (wParam == VK_F12) {
+			// Note, for those compiling with Visual Studio, pressing F12 will trigger a debug breakpoint.
+			// This is hard-coded and requires a registry key to be changed. https://stackoverflow.com/questions/18997754/how-to-disable-f12-to-debug-application-in-visual-studio-2012
+			// Also, you need to restart Visual Studio, and if it still does it, you need to restart your computer.
 			ToggleFullScreen_Monitor2(hwnd);
 		}
 		else if (wParam == 'T') {
+			// Switches whether 24-hour time format is used.
 			ChangeTimeFormat();
 		}
 		else if (wParam == 'F') {
+			// Changes whether the date is shown too.
 			ChangeShowDate();
 		}
 	default:
@@ -302,7 +296,7 @@ BOOL RenderText(LPARAM lParam) {
 		else {
 			hBrush = ((HBRUSH)GetStockObject(BLACK_BRUSH));
 		}
-		
+
 		FillRect(hMemDC, &rect, hBrush);
 
 		// Set text color to white
@@ -463,8 +457,6 @@ BOOL RenderText(LPARAM lParam) {
 }
 
 void CreateClock(HWND hwnd) {
-	// Placeholder text.
-	// Changes almost immediately because the refresh timer is by default 10 ms
 	g_hWndClockOut = CreateWindowW(WC_STATIC, L"Please wait while clock initializes...", WS_CHILD | WS_VISIBLE | SS_CENTER | SS_OWNERDRAW, 0, 0, 0, 0, hwnd, NULL, g_hInst, NULL);
 
 	if (g_hfMainFont) {
@@ -540,7 +532,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 		}
 	case WM_DESTROY:
 		DestroyWindow(hwnd);
-		g_bSettingsShown = FALSE;
+		g_bSettingsShown = FALSE; // Make sure the settings window will still work.
 		break;
 	default:
 		return DefWindowProc(hwnd, msg, wParam, lParam);
@@ -584,26 +576,27 @@ void CreateSettingsControls(HWND hwnd) {
 	SendMessage(g_hWndSettingsSaveBtn, WM_SETFONT, (WPARAM)g_hfBtnFont, TRUE);
 
 	g_hWndSettingsGradientCheck = CreateWindow(WC_BUTTON, L"Enable gradient", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 10, 10, 200, 30, hwnd, (HMENU)SETTINGS_GRADIENT_CHECK_ID, g_hInst, NULL);
-	SetFont(g_hWndSettingsGradientCheck, g_hfBtnFont);
+	SendMessage(g_hWndSettingsGradientCheck, WM_SETFONT, g_hfBtnFont, (LPARAM)TRUE);
 	SendMessage(g_hWndSettingsGradientCheck, BM_SETCHECK, g_Config.Gradient ? BST_CHECKED : BST_UNCHECKED, 0);
 
 	g_hWndSettingsDvdLogoCheck = CreateWindow(WC_BUTTON, L"DVD logo", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 10, 40, 200, 30, hwnd, (HMENU)SETTINGS_DVDLOGO_CHECK_ID, g_hInst, NULL);
-	SetFont(g_hWndSettingsDvdLogoCheck, g_hfBtnFont);
+	SendMessage(g_hWndSettingsDvdLogoCheck, WM_SETFONT, g_hfBtnFont, (LPARAM)TRUE);
 	SendMessage(g_hWndSettingsDvdLogoCheck, BM_SETCHECK, g_Config.DVDLogo ? BST_CHECKED : BST_UNCHECKED, 0);
 
 	g_hWndSettingsCustomColorsCheck = CreateWindow(WC_BUTTON, L"Use custom colors", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 10, 70, 200, 30, hwnd, (HMENU)SETTINGS_CUSTOMCOLORS_CHECK_ID, g_hInst, NULL);
-	SetFont(g_hWndSettingsCustomColorsCheck, g_hfBtnFont);
+	SendMessage(g_hWndSettingsCustomColorsCheck, WM_SETFONT, g_hfBtnFont, (LPARAM)TRUE);
 	SendMessage(g_hWndSettingsCustomColorsCheck, BM_SETCHECK, g_Config.CustomColor ? BST_CHECKED : BST_UNCHECKED, 0);
-
 }
 
 void SaveConfiguration(void) {
 	BOOL gradientChecked = SendMessage(g_hWndSettingsGradientCheck, BM_GETCHECK, 0, 0);
 	BOOL dvdlogoChecked = SendMessage(g_hWndSettingsDvdLogoCheck, BM_GETCHECK, 0, 0);
 	BOOL customcolorChecked = SendMessage(g_hWndSettingsCustomColorsCheck, BM_GETCHECK, 0, 0);
-	HKEY hKey = NULL;
+	HKEY hKey = NULL; // Optimized to use only HKEY because it writes to the same key every time.
 	DWORD value = 0;
 
+	// Used an LSTATUS to document errors if something goes wrong while writing registry keys.
+	// I'm not entirely sure if this works, because it's never had an error while writing a registry key.
 	LSTATUS lStatus = RegCreateKeyEx(HKEY_CURRENT_USER, g_szRegKey, 0, NULL, 0, KEY_WRITE, NULL, &hKey, NULL);
 
 	if (lStatus == 0) {
@@ -620,19 +613,23 @@ void SaveConfiguration(void) {
 	}
 	else {
 		wchar_t descBuffer[512];
+		// For anyone that doesn't know, the sizeof operator for wide (wchar_t) strings, you must divide the sizeof the buffer itself by the sizeof wchar_t.
+		// When handling ANSI strings, you can just write sizeof(string), but when handling wide characters, it is different.
+		// This is because Unicode is 16 bit as opposed to 8 bit ASCII characters. This is what allows Unicode to have special characters like ˣ and Д. 
+		// https://en.wikipedia.org/wiki/List_of_Unicode_characters
 		size_t bufSize = sizeof(descBuffer) / sizeof(wchar_t);
 		ZeroMemory(descBuffer, bufSize * sizeof(wchar_t));
 
-		FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, 
+		FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
 			NULL,
 			lStatus,
 			0,
 			descBuffer,
 			(DWORD)bufSize,
 			NULL
-			);
+		);
 
-		FormattedMessageBoxW(NULL, L"Error while trying to save registry values. (0x%08lx)\r\nThe LSTATUS for RegCreateKeyEx (%p) returned (%lu).\r\n\r\nDescription: %s", L"Error saving settings", MB_ICONERROR | MB_OK, GetLastError(), &lStatus, lStatus, descBuffer);
+		FormattedMessageBoxW(NULL, L"Error while trying to save registry values. (0x%08lx)\r\nThe LSTATUS for RegCreateKeyEx (%p) returned (%lu).\r\n\r\nDescription: %s\r\n\r\nYour configuration has not been saved.", L"Error saving settings", MB_ICONERROR | MB_OK, GetLastError(), &lStatus, lStatus, descBuffer);
 	}
 
 	RestartApplication();
@@ -655,7 +652,7 @@ BOOL DVDLogo(void) {
 	DWORD effect = 0;
 	DWORD size = sizeof(effect);
 	if (RegOpenKeyEx(HKEY_CURRENT_USER, g_szRegKey, 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
-		RegQueryValueEx(hKey, L"DVDLogo", NULL, NULL, (LPBYTE)&effect, &size);
+		RegQueryValueEx(hKey, L"DVDLogo", NULL, NULL, (LPBYTE)&effect, &size); // Switched the registry value name for personal preference
 		RegCloseKey(hKey);
 	}
 
@@ -753,8 +750,10 @@ int Clamp(int min_value, int max_value, int value) {
 }
 
 void ParseCustomColor(void) {
-	FILE* file = _wfopen(L".color", L"r, ccs=UTF-8");
+	// Pretty unorganized, but, it gets the job done!
+	FILE* file = _wfopen(L".color", L"r, ccs=UTF-8"); // Uses _wfopen because we're compiling in Unicode.
 	if (!file) {
+		// If the file fails to open, set everything to it's default and show an error message.
 		g_bgColor = RGB(0, 0, 0);
 		g_GradientColor.tvColor1.Red = 255 * 257;
 		g_GradientColor.tvColor1.Green = 0;
@@ -820,7 +819,7 @@ void ToggleFullScreen_Monitor2(HWND hWnd) {
 		MONITORINFO mi = { sizeof(MONITORINFO) };
 		if (GetMonitorInfo(monitors[monitorCount - 2], &mi)) {
 			SetWindowLong(hWnd, GWL_STYLE, WS_POPUP);
-			SetWindowPos(hWnd, HWND_TOP, 
+			SetWindowPos(hWnd, HWND_TOP,
 				mi.rcMonitor.left, mi.rcMonitor.top,
 				mi.rcMonitor.right - mi.rcMonitor.left,
 				mi.rcMonitor.bottom - mi.rcMonitor.top,

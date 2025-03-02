@@ -1,21 +1,11 @@
+![Icon](assets/clock_128.png)
 # XPClock
 
-XPClock is a lightweight, lightly-customizable clock application for Windows XP (And all versions after) that brings a retro touch with semi-modern functionality. It is built purely in C and Win32 API. It uses GDI for text rendering and the C standard library for the backend. 
-
-![Icon](assets/clock_128.png)
+XPClock is a lightweight, lightly-customizable clock application for Windows XP SP2 (And all versions after). It is built purely in C and Win32 API. It uses GDI for text rendering and the C standard library for the backend. 
 
 ##
 _"Time is what we want most but what we use worst." - William Penn_
 ##
-
-## Features
-
-- **Dynamic Text Resizing**: The clock text automatically resizes based on the window size.
-- **DVD Logo Effect**: A visually-pleasing DVD logo animation that moves around the screen. You can toggle this by pressing the `F2` key and toggling it on the settings menu.
-- **Red Gradient Background**: Option to toggle a red gradient background, also by the settings menu.
-- **AM/PM and 24-Hour Format**: Easily switch between 12-hour (AM/PM) and 24-hour time formats by pressing the `T` key.
-- **Date Display**: Toggle between displaying the date and just the time, by pressing the `F` key.
-- **Full-Screen Mode**: Expand the clock to full-screen or switch back to windowed mode, by pressing the `F11` key.
 
 ## Installation
 
@@ -31,18 +21,19 @@ XPClock is open-source software licensed under the **GNU General Public License 
 
 Contributions are welcome! Feel free to fork the repository, create a new branch, and submit a pull request. If you have any feature suggestions or bug reports, please open an issue.
 
-## Build Instructions
-I used Visual Studio 2022 with toolset `141_xp` for Windows XP compatibility. The source that I provided will not run on any Windows version before NT. This is because my source only supports Unicode (wide) encoding, which Windows 98, and versions before, does not support.
-I have not tried to compile it using any other compiler other than MSVC (`cl.exe`), but it probably can be done. To compile this yourself, simply download the source, open it in Visual Studio, and then click the Start button.
-
 ## Gallery
-A demonstration of the application running on Windows 11, with the Gradient background and DVD logo effect toggled:
-
 ![GIF Demo](assets/XPClock.gif)
 
 The about box of the application, running the newest version
 
-![About box](assets/ClockVista.png)
+![About box](assets/About.png)
+
+Version 1.5 added the ability to create a `.color` file to use a custom RGB color for both gradient and plain background effects.
+Here is an example of a `.color` file.
+![Example Color File](assets/ExampleColorFile.png)
+
+This configuration would result in this:
+![Example Custom Color](assets/CustomColorExample.png)
 
 ---
 

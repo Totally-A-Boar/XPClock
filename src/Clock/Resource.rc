@@ -68,7 +68,9 @@ CAPTION "About - Clock"
 FONT 8, "Arial", 400, 0, 0x0
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,196,97,50,14
-    LTEXT           "Clock\r\nVersion: 1.4.0.54\r\n\r\nThis application was created to test Win32 API GUI development and C. This application is distributed under the GNU General Public License (GPL) v2.0.\r\n\r\nProject github: https://github.com/Totally-A-Boar/XPClock/tree/main",IDC_STATIC,12,8,226,85
+    LTEXT           "Clock\r\nVersion: 1.5.0\r\n\r\nThis application was created to test Win32 API GUI development and C. This application is distributed under the GNU General Public License (GPL) v2.0.\r\n\r\nProject github:",IDC_STATIC,12,8,226,85
+    CONTROL         "<a>https://github.com/Totally-A-Boar/XPClock/tree/main</a>",IDC_SYSLINK2,
+                    "SysLink",WS_TABSTOP,62,64,184,14
 END
 
 
@@ -78,8 +80,8 @@ END
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,4,0,54
- PRODUCTVERSION 1,4,0,54
+ FILEVERSION 1,5,0,41
+ PRODUCTVERSION 1,5,0,41
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -96,12 +98,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "Jamie"
             VALUE "FileDescription", "Clock"
-            VALUE "FileVersion", "1.4.0.54"
+            VALUE "FileVersion", "1.5.0.41"
             VALUE "InternalName", "Clock.exe"
             VALUE "LegalCopyright", "Copyright (C) 2025 Jamie Howell. Distributed under GPL v2.0."
             VALUE "OriginalFilename", "Clock.exe"
             VALUE "ProductName", "Clock"
-            VALUE "ProductVersion", "1.4.0.54"
+            VALUE "ProductVersion", "1.5.0.41"
         END
     END
     BLOCK "VarFileInfo"
