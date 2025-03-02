@@ -16,23 +16,40 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#define _WIN32_WINNT 0x0501
 #include <Windows.h>
 #include <CommCtrl.h>
 #include "resource.h"
 #include <wchar.h>
 #include <time.h>
 #include <CommDlg.h>
+#include <ShellAPI.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-#ifdef __USE_COMMONCTRLS_6__
+// Version of common controls to link to. Changes the appearance of controls. https://learn.microsoft.com/en-us/windows/win32/controls/common-control-versions
 #pragma comment(linker,"\"/manifestdependency:type='win32' \
 name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
 processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
-#endif // __USE_COMMONCTRLS_6__
 
+// Functions wrappers
+#define SetFont(hWnd, hFont) SendMessage(hWnd, WM_SETFONT, (WPARAM)hFont, TRUE)
+#define MAKECOLOR16(n) { n * 257 }
+#define RGB16(r, g, b) { (r) * 257, (g) * 257, (b) * 257, 0 } // Used to calculate TRIVERTEX values, which are 16-bit values instead of regular RGB values, which are 8-bit.
 
-// Note: warning MSB8051 cannot be disabled via the editor. If you are building for Windows XP, and would like to disable the warning,
+// Structure to hold color information after being parsed
+typedef struct GradientColor {
+	TRIVERTEX tvColor1;
+	TRIVERTEX tvColor2;
+} GradientColor;
+
+typedef struct Config {
+	BOOL Gradient;
+	BOOL DVDLogo;
+	BOOL CustomColor;
+} Config;
+
+// Note: warning MSB8051 cannot be disabled via the editor. If you would like to disable the warning,
 // you have to edit your Toolset.targets for the project settings.
 // https://stackoverflow.com/questions/53841470/how-to-disable-warning-msb8051-support-for-targeting-windows-xp-is-deprecated
 // Yes, I know that my code is very messy and unfortunately, I don't know how to fix it.
@@ -54,17 +71,24 @@ HWND g_hWndSettings;											// Global variable for storing the window handle 
 HWND g_hWndSettingsSaveBtn;										// Global variable for storing the handle of the button for saving settings in the settings window. 
 HWND g_hWndSettingsGradientCheck;								// Global variable for storing the handle of the check box (button. See https://learn.microsoft.com/en-us/windows/win32/menurc/autocheckbox-control) for toggling the gradient rendering option on or off. 
 HWND g_hWndSettingsDvdLogoCheck;								// Same as above, except this toggles the bouncing, DVD logo effect when the text is rendered.
+HWND g_hWndSettingsCustomColorsCheck;
 HACCEL g_hAccel;												// Accelerator for keyboard shortcuts for the About dialog and Settings window. Defined in resource script (Resource.rc). 
 BOOL g_bIsFullScreen = FALSE;									// Used for full screen functionality.
 BOOL g_bUse24HourFormat = TRUE;									// Used for the time format switch. Added after everything else in this list.
 BOOL g_bShowDate = TRUE;										// Used for the date switch. Also added after everything else.
+BOOL g_bSettingsShown = FALSE;
 RECT g_rcWindow;												// Used for full screen functionality.
+GradientColor g_GradientColor;
+COLORREF g_bgColor;
+Config g_Config;
 #define TIMER_ID 0x101											// ID for refresh timer for renderer. See MainWndProc.
 #define SETTINGS_SAVE_BTN_ID			0x1001					// ID for save button in the settings window. Saves configuration to registry upon push.
 #define SETTINGS_GRADIENT_CHECK_ID		0x1002					// ID for check box in settings window for the gradient option. Assigned an ID to get it's check state.
 #define SETTINGS_DVDLOGO_CHECK_ID		0x1003					// Same as above.
+#define SETTINGS_CUSTOMCOLORS_CHECK_ID	0x1004
 
 // Forward declaration of functions
+int Clamp(int, int, int);										// Clamping function since native C does not feature one.
 ATOM RegisterMainClass(HINSTANCE);								// Registers the class for the main window.
 BOOL InitInstance(HINSTANCE, int);								// Stores the HINSTANCE, creates the fonts, and shows the main window.
 void CreateClock(HWND);											// Creates the static text control that the clock is rendered to. Takes the HWND parameter to use as the parent window for the text.
@@ -78,13 +102,17 @@ BOOL GradientUsed(void);										// Reads the UseGradient value in the registry
 BOOL DVDLogo(void);												// Does the same as above, except it read the DVDLogoEffect value. Determines whether the text moves and bounces around the screen. 
 void RestartApplication(void);									// Restarts the application. 
 int FormattedMessageBoxW(HWND, LPCWSTR, LPCWSTR, UINT, ...);	// Formats a Windows message box. 
-void ToggleFullScreen_Monitor1(HWND);							// Toggles full screen for the main window. By default, this goes to the first screen on the computer. 
+void ToggleFullScreen_Monitor1(HWND);							// Toggles full screen for the main window. This goes to the first screen on the computer. 
+void ToggleFullScreen_Monitor2(HWND);
 BOOL RenderText(LPARAM);										// Renders the text for the clock. Called by the loop in the MainWndProc. 
 LRESULT CALLBACK MainWndProc(HWND, UINT, WPARAM, LPARAM);		// The window procedure for the main window. This is where the timer loop is and where the key events and such are. https://learn.microsoft.com/en-us/windows/win32/winmsg/window-procedures 
 LRESULT CALLBACK SettingsWndProc(HWND, UINT, WPARAM, LPARAM);	// Same as above, but, it's for, you guessed it, the settings sub-window! 
 BOOL CALLBACK About_DLGProc(HWND, UINT, WPARAM, LPARAM);		// A little different from the standard window procedure. This doesn't draw it's own controls, it takes messages, but the controls and it's layout are defined in the resource script. https://learn.microsoft.com/en-us/windows/win32/dlgbox/using-dialog-boxes 
 void ChangeTimeFormat(void);									// Changes the time format. I use these functions for simplicity.
 void ChangeShowDate(void);										// Same as above.
+BOOL CustomColor(void);
+void ParseCustomColor();
+BOOL CALLBACK MonitorEnumProc(HMONITOR, HDC, LPRECT, LPARAM);
 
 // Specific errors I disabled because I either don't know how to fix them, or they don't impact the application.
 #pragma warning(disable : 28251)								// Inconsistent annotations. This one is one I disabled because it doesn't make or break anything. The only time I can think of that this error is actually shown is on the WinMain entry point. https://learn.microsoft.com/en-us/cpp/code-quality/c28251?view=msvc-170
@@ -146,6 +174,14 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow) {
 	g_hfMainFont = CreateFont(48, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH, g_szMainFont);
 	g_hfBtnFont = CreateFont(16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH, g_szMainFont);
 	
+	g_Config.CustomColor = CustomColor();
+	g_Config.DVDLogo = DVDLogo();
+	g_Config.Gradient = GradientUsed();
+
+	if (g_Config.CustomColor) {
+		ParseCustomColor();
+	}
+
 	g_hWndMain = CreateWindowW(g_szMainClass, L"Clock", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 800, 600, NULL, NULL, hInstance, NULL);
 	if (!g_hWndMain) {
 		return FALSE;
@@ -165,10 +201,17 @@ BOOL CALLBACK About_DLGProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lPara
 		case IDOK:
 			EndDialog(hwndDlg, IDOK);
 			return TRUE;
+		case IDC_SYSLINK2:
+			ShellExecute(NULL, L"open", L"https://github.com/Totally-A-Boar/XPClock/tree/main", NULL, NULL, SW_SHOWNORMAL);
+			break;
 		}
+		break;
+	case WM_CLOSE:
+		EndDialog(hwndDlg, 0);
 		break;
 	case WM_DESTROY:
 		EndDialog(hwndDlg, NULL);
+		return TRUE;
 		break;
 	}
 
@@ -182,6 +225,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
 		g_hAccel = LoadAccelerators(g_hInst, MAKEINTRESOURCE(IDR_MAINACCEL));
 		CreateClock(hwnd);
 		SetTimer(hwnd, TIMER_ID, 10, NULL); // 10ms for screen effects
+		SetForegroundWindow(hwnd);
 		break;
 	case WM_DESTROY:
 		KillTimer(hwnd, TIMER_ID);
@@ -209,7 +253,10 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
 		}
 			break;
 		case ID_SETTINGS:
-			InitSettings();
+			if (!g_bSettingsShown) {
+				InitSettings();
+				g_bSettingsShown = TRUE;
+			}
 			break;
 		}
 		break;
@@ -219,6 +266,9 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
 		}
 		else if (wParam == VK_F11) {
 			ToggleFullScreen_Monitor1(hwnd);
+		}
+		else if (wParam == VK_F12) {
+			ToggleFullScreen_Monitor2(hwnd);
 		}
 		else if (wParam == 'T') {
 			ChangeTimeFormat();
@@ -234,7 +284,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
 }
 
 BOOL RenderText(LPARAM lParam) {
-	if (!GradientUsed()) {
+	if (!g_Config.Gradient) {
 		LPDRAWITEMSTRUCT pDIS = (LPDRAWITEMSTRUCT)lParam;
 		HDC hdc = pDIS->hDC;
 		RECT rect = pDIS->rcItem;
@@ -244,8 +294,15 @@ BOOL RenderText(LPARAM lParam) {
 		HBITMAP hBitmap = CreateCompatibleBitmap(hdc, rect.right, rect.bottom);
 		HBITMAP hOldBitmap = (HBITMAP)SelectObject(hMemDC, hBitmap);
 
-		// Fill background with black
-		HBRUSH hBrush = (HBRUSH)GetStockObject(BLACK_BRUSH);
+		HBRUSH hBrush;
+
+		if (g_Config.CustomColor) {
+			hBrush = CreateSolidBrush(g_bgColor);
+		}
+		else {
+			hBrush = ((HBRUSH)GetStockObject(BLACK_BRUSH));
+		}
+		
 		FillRect(hMemDC, &rect, hBrush);
 
 		// Set text color to white
@@ -269,7 +326,7 @@ BOOL RenderText(LPARAM lParam) {
 		static int dx = 2, dy = 2; // Speed of movement
 		static int posX = 10, posY = 10; // Initial position
 
-		if (DVDLogo()) {
+		if (g_Config.DVDLogo) {
 			// Update position
 			posX += dx;
 			posY += dy;
@@ -315,22 +372,33 @@ BOOL RenderText(LPARAM lParam) {
 		TRIVERTEX vertex[2];
 		GRADIENT_RECT gRect;
 
-		// Define the start color
 		vertex[0].x = rect.left;
 		vertex[0].y = rect.top;
-		vertex[0].Red = 0xFFFF;
-		vertex[0].Green = 0x0000;
-		vertex[0].Blue = 0x0000;
-		vertex[0].Alpha = 0x0000;	  // No transparency, ever
-
-
-		// Define the end color (black)
 		vertex[1].x = rect.right;
 		vertex[1].y = rect.bottom;
-		vertex[1].Red = 0x0000;       // No Red
-		vertex[1].Green = 0x0000;     // No Green
-		vertex[1].Blue = 0x0000;      // Black
-		vertex[1].Alpha = 0x0000;     // No transparency
+
+		if (g_Config.CustomColor) {
+			vertex[0].Red = g_GradientColor.tvColor1.Red;
+			vertex[0].Green = g_GradientColor.tvColor1.Green;
+			vertex[0].Blue = g_GradientColor.tvColor1.Blue;
+
+			vertex[1].Red = g_GradientColor.tvColor2.Red;
+			vertex[1].Green = g_GradientColor.tvColor2.Green;
+			vertex[1].Blue = g_GradientColor.tvColor2.Blue;
+		}
+		else {
+			// Define the start color
+			vertex[0].Red = 0xFFFF;
+			vertex[0].Green = 0x0000;
+			vertex[0].Blue = 0x0000;
+			vertex[0].Alpha = 0x0000;
+
+			// Define the end color (black)
+			vertex[1].Red = 0x0000;
+			vertex[1].Green = 0x0000;
+			vertex[1].Blue = 0x0000;
+			vertex[1].Alpha = 0x0000;
+		}
 
 		// Gradient direction (vertical)
 		gRect.UpperLeft = 0;
@@ -360,7 +428,7 @@ BOOL RenderText(LPARAM lParam) {
 		static int dx = 2, dy = 2; // Speed of movement
 		static int posX = 10, posY = 10; // Initial position
 
-		if (DVDLogo()) {
+		if (g_Config.DVDLogo) {
 			// Update position
 			posX += dx;
 			posY += dy;
@@ -470,6 +538,10 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 		if (wParam == VK_ESCAPE) {
 			DestroyWindow(hwnd);
 		}
+	case WM_DESTROY:
+		DestroyWindow(hwnd);
+		g_bSettingsShown = FALSE;
+		break;
 	default:
 		return DefWindowProc(hwnd, msg, wParam, lParam);
 	}
@@ -496,7 +568,7 @@ ATOM RegisterSettingsClass(HINSTANCE hInstance) {
 BOOL InitSettings(void) {
 	RegisterSettingsClass(g_hInst);
 
-	g_hWndSettings = CreateWindow(g_szSettingsClass, L"Settings", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU, CW_USEDEFAULT, CW_USEDEFAULT, 240, 150, g_hWndMain, NULL, g_hInst, NULL);
+	g_hWndSettings = CreateWindow(g_szSettingsClass, L"Settings", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU, CW_USEDEFAULT, CW_USEDEFAULT, 270, 190, g_hWndMain, NULL, g_hInst, NULL);
 	if (!g_hWndSettings) {
 		return FALSE;
 	}
@@ -508,31 +580,60 @@ BOOL InitSettings(void) {
 }
 
 void CreateSettingsControls(HWND hwnd) {
-	g_hWndSettingsSaveBtn = CreateWindow(WC_BUTTON, L"Save", BS_DEFPUSHBUTTON | WS_TABSTOP | WS_CHILD | WS_VISIBLE, 130, 85, 100, 30, hwnd, (HMENU)SETTINGS_SAVE_BTN_ID, g_hInst, NULL);
+	g_hWndSettingsSaveBtn = CreateWindow(WC_BUTTON, L"Save", BS_DEFPUSHBUTTON | WS_TABSTOP | WS_CHILD | WS_VISIBLE, 160, 125, 100, 30, hwnd, (HMENU)SETTINGS_SAVE_BTN_ID, g_hInst, NULL);
 	SendMessage(g_hWndSettingsSaveBtn, WM_SETFONT, (WPARAM)g_hfBtnFont, TRUE);
 
 	g_hWndSettingsGradientCheck = CreateWindow(WC_BUTTON, L"Enable gradient", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 10, 10, 200, 30, hwnd, (HMENU)SETTINGS_GRADIENT_CHECK_ID, g_hInst, NULL);
-	SendMessage(g_hWndSettingsGradientCheck, WM_SETFONT, (WPARAM)g_hfBtnFont, TRUE);
-	SendMessage(g_hWndSettingsGradientCheck, BM_SETCHECK, GradientUsed() ? BST_CHECKED : BST_UNCHECKED, 0);
+	SetFont(g_hWndSettingsGradientCheck, g_hfBtnFont);
+	SendMessage(g_hWndSettingsGradientCheck, BM_SETCHECK, g_Config.Gradient ? BST_CHECKED : BST_UNCHECKED, 0);
 
 	g_hWndSettingsDvdLogoCheck = CreateWindow(WC_BUTTON, L"DVD logo", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 10, 40, 200, 30, hwnd, (HMENU)SETTINGS_DVDLOGO_CHECK_ID, g_hInst, NULL);
-	SendMessage(g_hWndSettingsDvdLogoCheck, WM_SETFONT, (WPARAM)g_hfBtnFont, TRUE);
-	SendMessage(g_hWndSettingsDvdLogoCheck, BM_SETCHECK, DVDLogo() ? BST_CHECKED : BST_UNCHECKED, 0);
+	SetFont(g_hWndSettingsDvdLogoCheck, g_hfBtnFont);
+	SendMessage(g_hWndSettingsDvdLogoCheck, BM_SETCHECK, g_Config.DVDLogo ? BST_CHECKED : BST_UNCHECKED, 0);
+
+	g_hWndSettingsCustomColorsCheck = CreateWindow(WC_BUTTON, L"Use custom colors", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 10, 70, 200, 30, hwnd, (HMENU)SETTINGS_CUSTOMCOLORS_CHECK_ID, g_hInst, NULL);
+	SetFont(g_hWndSettingsCustomColorsCheck, g_hfBtnFont);
+	SendMessage(g_hWndSettingsCustomColorsCheck, BM_SETCHECK, g_Config.CustomColor ? BST_CHECKED : BST_UNCHECKED, 0);
+
 }
 
 void SaveConfiguration(void) {
 	BOOL gradientChecked = SendMessage(g_hWndSettingsGradientCheck, BM_GETCHECK, 0, 0);
 	BOOL dvdlogoChecked = SendMessage(g_hWndSettingsDvdLogoCheck, BM_GETCHECK, 0, 0);
-	HKEY hKey_gradient;
-	HKEY hKey_dvdlogo;
-	RegCreateKeyEx(HKEY_CURRENT_USER, g_szRegKey, 0, NULL, 0, KEY_WRITE, NULL, &hKey_gradient, NULL);
-	RegCreateKeyEx(HKEY_CURRENT_USER, g_szRegKey, 0, NULL, 0, KEY_WRITE, NULL, &hKey_dvdlogo, NULL);
-	DWORD value = gradientChecked;
-	RegSetValueEx(hKey_gradient, L"Gradient", 0, REG_DWORD, (const BYTE*)&value, sizeof(value));
-	RegCloseKey(hKey_gradient);
-	value = dvdlogoChecked;
-	RegSetValueEx(hKey_dvdlogo, L"DVDLogoEffect", 0, REG_DWORD, (const BYTE*)&value, sizeof(value));
-	RegCloseKey(hKey_dvdlogo);
+	BOOL customcolorChecked = SendMessage(g_hWndSettingsCustomColorsCheck, BM_GETCHECK, 0, 0);
+	HKEY hKey = NULL;
+	DWORD value = 0;
+
+	LSTATUS lStatus = RegCreateKeyEx(HKEY_CURRENT_USER, g_szRegKey, 0, NULL, 0, KEY_WRITE, NULL, &hKey, NULL);
+
+	if (lStatus == 0) {
+		value = gradientChecked;
+		RegSetValueEx(hKey, L"Gradient", 0, REG_DWORD, (const BYTE*)&value, sizeof(value));
+
+		value = dvdlogoChecked;
+		RegSetValueEx(hKey, L"DVDLogo", 0, REG_DWORD, (const BYTE*)&value, sizeof(value));
+
+		value = customcolorChecked;
+		RegSetValueEx(hKey, L"CustomColor", 0, REG_DWORD, (const BYTE*)&value, sizeof(value));
+
+		RegCloseKey(hKey);
+	}
+	else {
+		wchar_t descBuffer[512];
+		size_t bufSize = sizeof(descBuffer) / sizeof(wchar_t);
+		ZeroMemory(descBuffer, bufSize * sizeof(wchar_t));
+
+		FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, 
+			NULL,
+			lStatus,
+			0,
+			descBuffer,
+			(DWORD)bufSize,
+			NULL
+			);
+
+		FormattedMessageBoxW(NULL, L"Error while trying to save registry values. (0x%08lx)\r\nThe LSTATUS for RegCreateKeyEx (%p) returned (%lu).\r\n\r\nDescription: %s", L"Error saving settings", MB_ICONERROR | MB_OK, GetLastError(), &lStatus, lStatus, descBuffer);
+	}
 
 	RestartApplication();
 }
@@ -554,7 +655,7 @@ BOOL DVDLogo(void) {
 	DWORD effect = 0;
 	DWORD size = sizeof(effect);
 	if (RegOpenKeyEx(HKEY_CURRENT_USER, g_szRegKey, 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
-		RegQueryValueEx(hKey, L"DVDLogoEffect", NULL, NULL, (LPBYTE)&effect, &size);
+		RegQueryValueEx(hKey, L"DVDLogo", NULL, NULL, (LPBYTE)&effect, &size);
 		RegCloseKey(hKey);
 	}
 
@@ -631,4 +732,119 @@ void ChangeShowDate(void) {
 	else {
 		g_bShowDate = TRUE;
 	}
+}
+
+BOOL CustomColor(void) {
+	HKEY hKey;
+	DWORD value = 0;
+	DWORD size = sizeof(value);
+	if (RegOpenKeyEx(HKEY_CURRENT_USER, g_szRegKey, 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+		RegQueryValueEx(hKey, L"CustomColor", NULL, NULL, (LPBYTE)&value, &size);
+		RegCloseKey(hKey);
+	}
+
+	return value;
+}
+
+int Clamp(int min_value, int max_value, int value) {
+	if (value > max_value) return max_value;
+	if (value < min_value) return min_value;
+	return value;
+}
+
+void ParseCustomColor(void) {
+	FILE* file = _wfopen(L".color", L"r, ccs=UTF-8");
+	if (!file) {
+		g_bgColor = RGB(0, 0, 0);
+		g_GradientColor.tvColor1.Red = 255 * 257;
+		g_GradientColor.tvColor1.Green = 0;
+		g_GradientColor.tvColor1.Blue = 0;
+		g_GradientColor.tvColor2.Red = 0;
+		g_GradientColor.tvColor2.Green = 0;
+		g_GradientColor.tvColor2.Blue = 0;
+		FormattedMessageBoxW(NULL, L"Warning: could not open the file '.color'\r\nPlease confirm that .color exists and is in the same directory as the application.\r\n\r\nThe application will fallback to the default color scheme.", L"Warning", MB_OK | MB_ICONWARNING);
+		return;
+	}
+
+	wchar_t line[128];
+	int r1 = 0, g1 = 0, b1 = 0, r2 = 0, g2 = 0, b2 = 0;
+	BOOL success;
+
+	ZeroMemory(line, sizeof(line) / sizeof(wchar_t));
+
+	// Parse the first color
+	if (fgetws(line, sizeof(line) / sizeof(wchar_t), file)) {
+		success = swscanf(line, L"( %d, %d, %d )", &r1, &g1, &b1) == 3;
+		if (success) {
+			r1 = Clamp(0, 255, r1);
+			g1 = Clamp(0, 255, g1);
+			b1 = Clamp(0, 255, b1);
+		}
+	}
+
+	ZeroMemory(line, sizeof(line) / sizeof(wchar_t));
+
+	if (GradientUsed() && fgetws(line, sizeof(line) / sizeof(wchar_t), file)) {
+		success = swscanf(line, L"( %d, %d, %d )", &r2, &g2, &b2) == 3;
+		if (success) {
+			r2 = Clamp(0, 255, r2);
+			g2 = Clamp(0, 255, g2);
+			b2 = Clamp(0, 255, b2);
+		}
+	}
+
+	g_bgColor = RGB(r1, g1, b1);
+	g_GradientColor.tvColor1.Red = (COLOR16)(r1 * 257);
+	g_GradientColor.tvColor1.Green = (COLOR16)(g1 * 257);
+	g_GradientColor.tvColor1.Blue = (COLOR16)(b1 * 257);
+	g_GradientColor.tvColor2.Red = (COLOR16)(r2 * 257);
+	g_GradientColor.tvColor2.Green = (COLOR16)(g2 * 257);
+	g_GradientColor.tvColor2.Blue = (COLOR16)(b2 * 257);
+
+	fclose(file);
+}
+
+void ToggleFullScreen_Monitor2(HWND hWnd) {
+	HMONITOR monitors[16] = { 0 };
+	int monitorCount = GetSystemMetrics(SM_CMONITORS);
+
+	if (monitorCount < 2) {
+		ToggleFullScreen_Monitor1(hWnd); // Fall back to the regular full screen function if the user doesn't have a 2nd monitor
+		return;
+	}
+
+	if (!g_bIsFullScreen) {
+		GetWindowRect(hWnd, &g_rcWindow); // Store original window size and position
+		EnumDisplayMonitors(NULL, NULL, MonitorEnumProc, (LPARAM)monitors);
+
+		MONITORINFO mi = { sizeof(MONITORINFO) };
+		if (GetMonitorInfo(monitors[monitorCount - 2], &mi)) {
+			SetWindowLong(hWnd, GWL_STYLE, WS_POPUP);
+			SetWindowPos(hWnd, HWND_TOP, 
+				mi.rcMonitor.left, mi.rcMonitor.top,
+				mi.rcMonitor.right - mi.rcMonitor.left,
+				mi.rcMonitor.bottom - mi.rcMonitor.top,
+				SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+			g_bIsFullScreen = TRUE;
+		}
+	}
+	else {
+		SetWindowLong(hWnd, GWL_STYLE, WS_OVERLAPPEDWINDOW);
+		SetWindowPos(hWnd, HWND_TOP,
+			g_rcWindow.left, g_rcWindow.top,
+			g_rcWindow.right - g_rcWindow.left,
+			g_rcWindow.bottom - g_rcWindow.top,
+			SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+		g_bIsFullScreen = FALSE;
+	}
+}
+
+BOOL CALLBACK MonitorEnumProc(HMONITOR hMon, HDC hDC, LPRECT lprcMonitor, LPARAM lParam) {
+	UNREFERENCED_PARAMETER(hDC);
+	UNREFERENCED_PARAMETER(lprcMonitor);
+
+	HMONITOR* monitors = (HMONITOR*)lParam;
+	int index = 0;
+	monitors[index++] = hMon;
+	return TRUE;
 }
