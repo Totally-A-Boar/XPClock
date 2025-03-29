@@ -4,7 +4,7 @@
 _"Time is what we want most but what we use worst." - William Penn_
 ##
 
-XPClock is a lightweight, lightly-customizable clock application for Windows XP SP2 (And all versions after). It is built purely in C and Win32 API. It uses GDI for text rendering and the C standard library for the backend. 
+XPClock is a lightweight, lightly-customizable clock application for Windows XP SP2 (And all versions after). It is built mainly in C and Win32 API. It uses GDI for text rendering and the C standard library for the backend. 
 
 ## Contributing
 
