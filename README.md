@@ -30,6 +30,7 @@ The about box of the application, running the newest version
 
 Version 1.5 added the ability to create a `.color` file to use a custom RGB color for both gradient and plain background effects.
 Here is an example of a `.color` file.
+
 ![Example Color File](assets/ExampleColorFile.png)
 
 This configuration would result in this:
