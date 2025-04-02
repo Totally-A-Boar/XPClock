@@ -49,7 +49,7 @@
 #define _WIN32_WINNT 0x0501
 
 #define szVERSION L"1.6.1"
-#define szBUILDDATE L"3/31/25"
+#define szBUILDDATE L"4/2/25"
 #define szBUILDNUMBER L"21"
 #define g_szRegKey L"Software\\Jamie\\Clock\\Settings" // Constant string for getting where the registry values for settings are stored. Based off of the following format: 'Software\Company Name\Application Name\Settings'
 extern WCHAR* g_szMainFont; // Global variable for the font name. Changed to not be constant to accomodate for custom fonts.
