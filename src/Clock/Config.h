@@ -79,7 +79,6 @@ BOOL TrayIconEnabled(void); // Returns whether the tray icon is enabled
 BOOL ConsoleEnabled(void); // Returns whether the console is enabled
 BOOL MenuEnabled(void); // Returns whether the menu in the main window is enabled
 void CreateReg(void); // Create the registry key on first run. Fixes a bug where the application would crash if the registry key didn't exist.
-BOOL ExportSettings(HWND); // Exports the settings to a file
 
 // Extern variables
 extern Config g_Config; // Global configuration structure

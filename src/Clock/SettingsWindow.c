@@ -211,9 +211,6 @@ void CreateSettingsControls(HWND hwnd) {
 	SendMessage(g_hWndSettingsMenuCheck, WM_SETFONT, g_hfBtnFont, (LPARAM)TRUE);
 	SendMessage(g_hWndSettingsMenuCheck, BM_SETCHECK, g_Config.MenuEnabled ? BST_CHECKED : BST_UNCHECKED, 0);
 
-	g_hWndSettingsExportBtn = CreateWindow(WC_BUTTON, L"Export settings", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON, 0, 0, 0, 0, hwnd, (HMENU)SETTINGS_EXPORT_BTN_ID, g_hInst, NULL);
-	SendMessage(g_hWndSettingsExportBtn, WM_SETFONT, g_hfBtnFont, (LPARAM)TRUE);
-
 	// By default, set everything to disabled
 	EnableWindow(g_hWndSettingsTimeZoneCombo, FALSE);
 	EnableWindow(g_hWndSettingsAddressEdit, FALSE);
@@ -281,9 +278,6 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 			SetColorFile();
 			SetWindowText(g_hWndSettingsFileText, GetColorFile());
 		}
-		else if (LOWORD(wParam) == SETTINGS_EXPORT_BTN_ID) {
-			ExportSettings(hwnd);
-		}
 		else if (HIWORD(wParam) == CBN_SELCHANGE && LOWORD(wParam) == SETTINGS_TIME_SOURCE_DROPDOWN_ID) {
 			int sel = SendMessage(g_hWndDropDownTimeSource, CB_GETCURSEL, 0, 0);
 
@@ -350,7 +344,6 @@ void SizeSettingsControls(HWND hwnd) {
 	SetWindowPos(g_hWndSettingsConsoleCheck, NULL, rc.left + 10, rc.bottom - 125, 160, 30, SWP_NOACTIVATE | SWP_NOZORDER);
 	SetWindowPos(g_hWndSettingsTrayIconCheck, NULL, rc.left + 170, rc.bottom - 125, 120, 30, SWP_NOACTIVATE | SWP_NOZORDER);
 	SetWindowPos(g_hWndSettingsMenuCheck, NULL, rc.left + 10, rc.top + 100, 178, 30, SWP_NOACTIVATE | SWP_NOZORDER);
-	SetWindowPos(g_hWndSettingsExportBtn, NULL, rc.left + 120, rc.bottom - 40, 100, 30, SWP_NOACTIVATE | SWP_NOZORDER);
 
 	SendMessage(g_hWndSettingsPortBtn, UDM_SETBUDDY, (WPARAM)g_hWndSettingsPortEdit, 0);
 
