@@ -311,7 +311,7 @@ void PickFont(void) {
 		LONG lResult = RegOpenKeyEx(HKEY_CURRENT_USER, g_szRegKey, 0, KEY_SET_VALUE, &hKey);
 		if (lResult == ERROR_SUCCESS) {
 			wprintf(L"User selected %s font.\r\n", lf.lfFaceName);
-			lResult = RegSetValueEx(hKey, L"CustomFont", NULL, REG_SZ, (const BYTE*)lf.lfFaceName, (lstrlen(lf.lfFaceName) + 1) * sizeof(wchar_t));
+			lResult = RegSetValueEx(hKey, L"CustomFont", NULL, (DWORD)REG_SZ, (const BYTE*)lf.lfFaceName, (lstrlen(lf.lfFaceName) + 1) * sizeof(wchar_t));
 			RegCloseKey(hKey);
 		}
 	}
@@ -378,7 +378,7 @@ void SetColorFile(void) {
 		HKEY hKey;
 		LONG lResult = RegOpenKeyEx(HKEY_CURRENT_USER, g_szRegKey, 0, KEY_SET_VALUE, &hKey);
 		if (lResult == ERROR_SUCCESS) {
-			lResult = RegSetValueEx(hKey, L"ColorFile", NULL, REG_SZ, (const BYTE*)szFile, (lstrlen(szFile) + 1) * sizeof(wchar_t));
+			lResult = RegSetValueEx(hKey, L"ColorFile", NULL, (DWORD)REG_SZ, (const BYTE*)szFile, (lstrlen(szFile) + 1) * sizeof(wchar_t));
 			RegCloseKey(hKey);
 		}
 	}
@@ -647,4 +647,81 @@ BOOL MenuEnabled(void) {
 	}
 
 	return option;
+}
+
+void CreateReg(void) {
+	wprintf(L"Making sure registry keys exist.\r\n");
+	HKEY hKey;
+	LONG lResult;
+
+	// Try to open the registry key
+	lResult = RegOpenKeyEx(HKEY_CURRENT_USER, g_szRegKey, 0, KEY_READ, &hKey);
+	if (lResult == ERROR_SUCCESS) {
+		RegCloseKey(hKey); // Key exists. Nothing else left to do here.
+	}
+	else if (lResult == ERROR_FILE_NOT_FOUND) {
+		// If the key doesn't exist, create it
+		lResult = RegCreateKeyEx(HKEY_CURRENT_USER, g_szRegKey, 0, NULL, REG_OPTION_NON_VOLATILE, KEY_WRITE, NULL, &hKey, NULL);
+
+		if (lResult != ERROR_SUCCESS) {
+			red();
+			wprintf(L"An error occurred.\r\n");
+			reset();
+			FormattedMessageBox(NULL, L"Creating the registry key failed. This is required to run the application correctly.\r\n\r\nError status: 0x%x.\r\nFile: Config.c.\r\nLine: 668.\r\n\r\nRecommended actions:\r\n\tCreate the registry key manually. A guide is available on the Github page.\r\n\tCreate an issue on the Github page.\r\n\r\nExecution cannot proceed.", L"XPClock", MB_OK | MB_ICONERROR, lResult);
+			exit(lResult);
+		}
+	}
+	else {
+		red();
+		wprintf(L"An error occurred.\r\n");
+		reset();
+
+		FormattedMessageBox(NULL, L"An unknown error occurred while trying to create the registry key.\r\n\r\nError status: 0x%x.\r\nFile: Config.c.\r\nLine: 673.\r\n\r\nExecution cannot proceed.", L"XPClock", MB_OK | MB_ICONERROR, lResult);
+		exit(lResult);
+	}
+
+	wprintf(L"Created registry key.\r\n");
+}
+
+BOOL ExportSettings(HWND hParent) {
+	wchar_t szFile[MAX_PATH] = L"";
+
+	OPENFILENAME ofn;
+	ZeroMemory(&ofn, sizeof(ofn));
+
+	ofn.lStructSize = sizeof(ofn);
+	ofn.hwndOwner = hParent;
+	ofn.lpstrFile = szFile;
+	ofn.lpstrFile[0] = '\0';
+	ofn.nMaxFile = sizeof(szFile);
+	ofn.lpstrFilter = L"Registry files (*.reg)\0*.reg\0All files (*.*)\0*.*\0";
+	ofn.nFilterIndex = 1;
+	ofn.lpstrFileTitle = L"Export settings to file";
+	ofn.nMaxFileTitle = 0;
+	ofn.lpstrInitialDir = NULL;
+	ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+
+	// Show save as dialog
+	if (!GetSaveFileName(&ofn)) {
+		return FALSE;
+	}
+
+	// Open the registry key
+	HKEY hKey;
+	if (RegOpenKeyEx(HKEY_CURRENT_USER, g_szRegKey, 0, KEY_READ, &hKey) != ERROR_SUCCESS) {
+		MessageBox(hParent, L"Could not open registry key.\r\n\r\nYour settings have not been copied to a file.", L"XPClock", MB_ICONERROR);
+		return FALSE;
+	}
+
+	// Save the registry key to the selected file
+	LONG result = RegSaveKey(hKey, szFile, NULL);
+	RegCloseKey(hKey);
+
+	if (result != ERROR_SUCCESS) {
+		FormattedMessageBox(NULL, L"Failed to export registry settings. Error code: 0x%x", L"XPClock", MB_ICONERROR, result);
+		return FALSE;
+	}
+
+	MessageBox(NULL, L"Registry settings exported successfully!", L"XPClock", MB_ICONINFORMATION);
+	return TRUE;
 }

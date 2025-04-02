@@ -73,6 +73,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	UNREFERENCED_PARAMETER(hPrevInstance); // https://learn.microsoft.com/en-us/archive/msdn-magazine/2005/may/c-at-work-unreferenced-parameters-adding-task-bar-commands
 	UNREFERENCED_PARAMETER(lpCmdLine);
 
+	CreateReg();
+
 	if (ConsoleEnabled()) {
 		// If the user wants the console to be open, open the console.
 		AllocConsole();

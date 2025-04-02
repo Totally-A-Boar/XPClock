@@ -48,9 +48,9 @@
 
 #define _WIN32_WINNT 0x0501
 
-#define szVERSION L"1.6.0"
-#define szBUILDDATE L"3/28/25"
-#define szBUILDNUMBER L"727"
+#define szVERSION L"1.6.1"
+#define szBUILDDATE L"3/31/25"
+#define szBUILDNUMBER L"12"
 #define g_szRegKey L"Software\\Jamie\\Clock\\Settings" // Constant string for getting where the registry values for settings are stored. Based off of the following format: 'Software\Company Name\Application Name\Settings'
 extern WCHAR* g_szMainFont; // Global variable for the font name. Changed to not be constant to accomodate for custom fonts.
 extern UINT g_Context; // Context for what part of the UI is being shown. Useful for scanning the messages to check if the user clicked escape.

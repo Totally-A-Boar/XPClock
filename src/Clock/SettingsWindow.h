@@ -44,6 +44,7 @@
 #define SETTINGS_TRAYICON_CHECK_ID		0x1014
 #define SETTINGS_CONSOLE_CHECK_ID		0x1015
 #define SETTINGS_MENU_CHECK_ID			0x1016
+#define SETTINGS_EXPORT_BTN_ID			0x1017
 
 // Window handles for the controls
 // Not adding comments here because there are so much
@@ -71,6 +72,7 @@ HWND g_hWndSettingsTimeZoneCombo;
 HWND g_hWndSettingsTrayIconCheck;
 HWND g_hWndSettingsConsoleCheck;
 HWND g_hWndSettingsMenuCheck;
+HWND g_hWndSettingsExportBtn;
 
 extern const wchar_t* g_szTimeZones[]; // Constant string array for every time zone. Defined in SettingsWindow because it is loaded into the combo box but it is also used in the NTP client
 
