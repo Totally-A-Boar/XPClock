@@ -62,7 +62,6 @@ HANDLE g_hNTPThread; // Handle for the thread itself.
 
 
 // Specific errors I disabled because I either don't know how to fix them, or they don't impact the application.
-#pragma warning(disable : 28251) // Inconsistent annotations. https://learn.microsoft.com/en-us/cpp/code-quality/c28251?view=msvc-170
 #pragma warning(disable : 4047)	// Different levels of indirection.
 
 #pragma region Main window
