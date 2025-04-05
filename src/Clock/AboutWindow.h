@@ -22,7 +22,7 @@
 #include "Clock.h"
 
 // Control ID's
-#define ABOUT_OK_BTN_ID	0x2001
+#define ABOUT_OK_BTN_ID	  0x2001
 #define ABOUT_TEXT_ID		0x2002
 #define ABOUT_LINK_ID		0x2003
 
