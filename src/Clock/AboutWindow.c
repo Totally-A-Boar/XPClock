@@ -89,7 +89,7 @@ LRESULT CALLBACK AboutWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		break;
 	}
 	case WM_DESTROY:
-		g_Context = _CONTEXT_CLOCK_;
+		g_Context = __CONTEXT_CLOCK__;
 		EnableWindow(g_hWndMain, TRUE); // Make sure to re-enable the main window
 		ShutdownGDIPlus(); // Shutdown GDI+ to prevent memory leaks. Since it is only used here it is being deactived here.
 		SetForegroundWindow(g_hWndMain);

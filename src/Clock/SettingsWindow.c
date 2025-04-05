@@ -310,7 +310,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 		EnableWindow(g_hWndMain, TRUE);
 		SetForegroundWindow(g_hWndMain);
 		DestroyWindow(hwnd);
-		g_Context = _CONTEXT_CLOCK_;
+		g_Context = __CONTEXT_CLOCK__;
 		break;
 	default:
 		return DefWindowProc(hwnd, msg, wParam, lParam);

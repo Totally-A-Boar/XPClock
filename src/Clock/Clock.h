@@ -20,10 +20,16 @@
 #define __CLOCK_H__
 
 // Ideintifiers for g_Context
-#define _CONTEXT_CLOCK_ 0xC1
-#define _CONTEXT_ABOUT_ 0xC2
-#define _CONTEXT_SETTINGS_ 0xC3
-#define _CONTEXT_ALARMS_ 0xC4
+#define __CONTEXT_CLOCK__ 0xC1
+#define __CONTEXT_ABOUT__ 0xC2
+#define __CONTEXT_SETTINGS__ 0xC3
+#define __CONTEXT_ALARMS__ 0xC4
+
+// Constants for format identifiers
+#define _SHOW_DATE_24_HOUR_FORMAT_	0
+#define _HIDE_DATE_24_HOUR_FORMAT_	1
+#define _SHOW_DATE_12_HOUR_FORMAT_	2
+#define _HIDE_DATE_12_HOUR_FORMAT_	3
 
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -38,6 +44,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdarg.h>
 
 #include "Config.h"
 #include "resource.h"
@@ -48,10 +55,10 @@
 
 #define _WIN32_WINNT 0x0501
 
-#define szVERSION L"1.6.1"
-#define szBUILDDATE L"4/2/25"
-#define szBUILDNUMBER L"21"
-#define g_szRegKey L"Software\\Jamie\\Clock\\Settings" // Constant string for getting where the registry values for settings are stored. Based off of the following format: 'Software\Company Name\Application Name\Settings'
+#define szVERSION L"1.7.0-debug"
+#define szBUILDDATE L"4/5/25"
+#define szBUILDNUMBER L"30"
+
 extern WCHAR* g_szMainFont; // Global variable for the font name. Changed to not be constant to accomodate for custom fonts.
 extern UINT g_Context; // Context for what part of the UI is being shown. Useful for scanning the messages to check if the user clicked escape.
 
@@ -79,7 +86,8 @@ extern COLORREF g_bgColor; // Holds the color that is used if a custom color is 
 LRESULT CALLBACK MainWndProc(HWND, UINT, WPARAM, LPARAM); // The window procedure for the main window. This is where the timer loop is and where the key events and such are. https://learn.microsoft.com/en-us/windows/win32/winmsg/window-procedures 
 ATOM RegisterMainClass(HINSTANCE); // Registers the class for the main window.
 BOOL InitInstance(HINSTANCE, int); // Stores the HINSTANCE, creates the fonts, and shows the main window.
-void CreateClock(HWND);	// Creates the static text control that the clock is rendered to. Takes the HWND parameter to use as the parent window for the text.0
+BOOL CreateClock(void);
+void CreateClockControl(HWND);	// Creates the static text control that the clock is rendered to. Takes the HWND parameter to use as the parent window for the text.0
 BOOL RenderText(LPARAM); // Renders the text for the clock. Called by the loop in the MainWndProc. 
 void ResizeText(HWND); // Function to dynamically resize the text.
 void GetCurrentDateTime(WCHAR*, size_t); // Gets the system time and formats a wide-string to display it based off of the formats specified above. Takes a pointer to a WCHAR and a size_t to get the size of the buffer. https://cplusplus.com/reference/cwchar/swprintf/ 

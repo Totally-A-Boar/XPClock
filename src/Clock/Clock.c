@@ -24,19 +24,12 @@
 #include "TrayIcon.h"
 #include "Colors.h"
 
-// Constants for format identifiers
-#define _SHOW_DATE_24_HOUR_FORMAT_	0
-#define _HIDE_DATE_24_HOUR_FORMAT_	1
-#define _SHOW_DATE_12_HOUR_FORMAT_	2
-#define _HIDE_DATE_12_HOUR_FORMAT_	3
-
  // Version of common controls to link to. Changes the appearance of controls. https://learn.microsoft.com/en-us/windows/win32/controls/common-control-versions
 #pragma comment(linker,"\"/manifestdependency:type='win32' \
 name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
 processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
-// Global variables
-
+#pragma region Global Variables
 // Application instance and handles
 HINSTANCE g_hInst; // Global variable for storing the handle for the instance for use whenever it is needed. I prefer this method over passing an HINSTANCE into each function.
 HWND g_hWndMain; // Global variable for storing the window handle for the main window of the application. This is the window where the clock itself is rendered. See MainWndProc. 
@@ -56,7 +49,7 @@ HFONT g_hfMainFont; // Global variable for storing the main font that will be us
 HFONT g_hfBtnFont; // Same as above, except this one is rendered smaller to fit in buttons. Is used in the settings sub-window.
 
 // Strings
-const WCHAR* g_szMainClass = L"ClockWndClass"; // Constant string for registering the main window class. https://learn.microsoft.com/en-us/windows/win32/intl/registering-window-classes
+#define szCLASS L"ClockWndClass" // Constant string for registering the main window class. https://learn.microsoft.com/en-us/windows/win32/intl/registering-window-classes
 WCHAR* g_szMainFont; // Global variable for the font name. Changed to not be constant to accomodate for custom fonts.
 
 // Control ID's
@@ -65,162 +58,34 @@ WCHAR* g_szMainFont; // Global variable for the font name. Changed to not be con
 // NTP-associated values
 DWORD g_tidNTPThread; // Thread ID for the NTP refresh thread
 HANDLE g_hNTPThread; // Handle for the thread itself.
+#pragma endregion
+
 
 // Specific errors I disabled because I either don't know how to fix them, or they don't impact the application.
 #pragma warning(disable : 28251) // Inconsistent annotations. https://learn.microsoft.com/en-us/cpp/code-quality/c28251?view=msvc-170
 #pragma warning(disable : 4047)	// Different levels of indirection.
-int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine, int nCmdShow) {
-	UNREFERENCED_PARAMETER(hPrevInstance); // https://learn.microsoft.com/en-us/archive/msdn-magazine/2005/may/c-at-work-unreferenced-parameters-adding-task-bar-commands
-	UNREFERENCED_PARAMETER(lpCmdLine);
 
-	CreateReg();
+#pragma region Main window
+BOOL CreateClock(void) {
+	RegisterMainClass(g_hInst); // Register the class for the main window
 
-	if (ConsoleEnabled()) {
-		// If the user wants the console to be open, open the console.
-		AllocConsole();
-
-		freopen("CONOUT$", "w", stdout);
-		freopen("CONOUT$", "w", stderr);
-		// Don't need stdin for anything, so don't open it.
-	}
-
-	// See colors.h for this call and like calls.
-	green();
-	wprintf(L"Welcome to XPClock! It appears you have the console logging option turned on.\r\nThis will output debug messages whenever specific functions are called.\r\n\r\n");
-	reset();
-
-	// https://learn.microsoft.com/en-us/windows/win32/controls/cc-faq
-	INITCOMMONCONTROLSEX icex;
-	icex.dwSize = sizeof(INITCOMMONCONTROLSEX);
-	icex.dwICC = ICC_WIN95_CLASSES;
-	if (!InitCommonControlsEx(&icex)) {
-		red();
-		wprintf(L"Error initializing common controls! Execution cannot proceed.\r\n"); // Print to the console that common controls fails to initialize.
-		reset();
-		FormattedMessageBox(NULL, L"A severe error occurred while starting up the application! (0x%x)\r\nCommon controls failed to initialize.\r\n\r\nPointer to common controls structure: 0x%p\r\n\r\nThe application will now exit.", L"XPClock - Common Controls Initialization Error", MB_OK | MB_ICONERROR, GetLastError(), &icex);
-		return GetLastError();
-	}
-
-	// Register the window class and show the window.
-	RegisterMainClass(hInstance);
-	wprintf(L"Registered main class with class string: '%s'\r\n", g_szMainClass);
-
-	// Intitialize the instance of the application
-	if (!InitInstance(hInstance, nCmdShow)) {
-		red();
-		wprintf(L"\r\nError initializing the instance of the application! This most likely indicates that the window failed to create. Please check the message box.\r\n");
-		reset();
-		FormattedMessageBox(NULL, L"A severe error occurred while starting up the application! (0x%x)\r\nThe instance of the application failed to initialize.\r\n\r\nThe application will now exit.", L"Severe Error!", MB_OK | MB_ICONERROR, GetLastError());
-		return GetLastError();
-	}
-
-	// Main message loop. https://learn.microsoft.com/en-us/windows/win32/winmsg/using-messages-and-message-queues
-	MSG msg;
-	while (GetMessage(&msg, NULL, 0, 0)) {
-		if (msg.message == WM_KEYDOWN && msg.wParam == VK_ESCAPE) {
-			switch (g_Context) {
-			case _CONTEXT_CLOCK_:
-				wprintf(L"Quiting application...\r\n");
-				PostQuitMessage(0);
-				break;
-			case _CONTEXT_ABOUT_:
-				wprintf(L"Escape key recieved. Destroying about window.\r\n");
-				DestroyWindow(g_hWndAbout);
-				break;
-			case _CONTEXT_SETTINGS_:
-				wprintf(L"Escape key recieved. Destroying settings window.\r\n");
-				DestroyWindow(g_hWndSettings);
-				break;
-			}
-		}
-
-		TranslateMessage(&msg);
-		DispatchMessage(&msg);
-	}
-
-	return 0;
-}
-
-BOOL InitInstance(HINSTANCE hInstance, int nCmdShow) {
-	blue();
-	wprintf(L"Initializing instance...\r\n\r\n");
-	reset();
-
-	g_hInst = hInstance;
-
-	g_szMainFont = GetCustomFont();
-	wprintf(L"Setting up fonts with font name: '%s' \r\n", g_szMainFont);
-
-	// Create the fonts
-	g_hfMainFont = CreateFont(48, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH, g_szMainFont);
-	g_hfBtnFont = CreateFont(16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH, g_szMainFont);
-
-	// Set config structure values to prevent repeated system calls
-	wprintf(L"Parsing configuration from registry...\r\n");
-	g_Config.CustomColor = CustomColor();
-	g_Config.DVDLogo = DVDLogo();
-	g_Config.Gradient = GradientUsed();
-	g_Config.DisplayFormat = GetDisplayFormat();
-	g_Config.ConsoleEnabled = ConsoleEnabled();
-	g_Config.TrayIconEnabled = TrayIconEnabled();
-	g_Config.MenuEnabled = MenuEnabled();
-
-	if (g_Config.MenuEnabled) {
-		g_hMenu = LoadMenu(hInstance, MAKEINTRESOURCE(IDR_MAINMENU));
-	}
-	else {
-		g_hMenu = NULL;
-	}
-
-	wprintf(L"g_Config (%p) fields successfully parsed with values\r\nCustomColor: %d\r\nConsoleEnabled: %d\r\nDisplayFormat: %d\r\nDVDLogo: %d\r\nGradient: %d\r\nTrayIconEnabled: %d\r\nMenuEnabled: %d\r\n", &g_Config, g_Config.CustomColor, g_Config.ConsoleEnabled, g_Config.DisplayFormat, g_Config.DVDLogo, g_Config.Gradient, g_Config.TrayIconEnabled, g_Config.MenuEnabled);
-
-	if (g_Config.TrayIconEnabled) {
-		wprintf(L"Starting tray icon...\r\n");
-		StartTray();
-	}
-
-	wprintf(L"Parsing time config...\r\n");
-	GetTimeConfig(&g_TimeConfig);
-	g_nTimeZone = GetTimeZone();
-	wprintf(L"g_TimeConfig (%p) parsed successfully.\r\n", &g_TimeConfig);
-
-	// Parses the clock.col file if the setting is set to true
-	if (g_Config.CustomColor) {
-		wprintf(L"Parsing custom color from '%s'\r\n", GetColorFile());
-		ParseCustomColor();
-	}
-
-	if (g_TimeConfig.ts == 1) {
-		wprintf(L"Creating NTP sync thread.\r\n");
-		g_hNTPThread = CreateThread(NULL, 0, NTPThread, NULL, 0, &g_tidNTPThread);
-		if (!g_hNTPThread) {
-			red();
-			wprintf(L"Failed to create NTP sync thread! GetLastError: 0x%x\r\n", GetLastError());
-			reset();
-			MessageBox(NULL, L"Failed to create NTP sync thread!", L"Error", MB_OK | MB_ICONERROR);
-			return FALSE;
-		}
-	}
-
-	// Create the main window and show it.
 	wprintf(L"Creating main window...\r\n");
-	g_hWndMain = CreateWindowW(g_szMainClass, L"Clock", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 800, 600, NULL, g_hMenu, hInstance, NULL);
+	g_hWndMain = CreateWindowW(szCLASS, L"XPClock", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 800, 600, NULL, g_hMenu, g_hInst, NULL);
+
 	if (!g_hWndMain) {
-		DWORD dwError = GetLastError();
 		red();
 		wprintf(L"Failed to create main window! GetLastError: 0x%x\r\n", GetLastError());
 		reset();
 		return FALSE;
 	}
-	wprintf(L"Successfully created main window\r\n");
+	wprintf(L"Successfully created main window!\r\n");
 
-	ShowWindow(g_hWndMain, nCmdShow);
+	ShowWindow(g_hWndMain, SW_SHOW);
 	UpdateWindow(g_hWndMain);
 
 	return TRUE;
 }
 
-#pragma region Main window
 ATOM RegisterMainClass(HINSTANCE hInstance) {
 	// Pretty standard ATOM for registering a class
 	// This is the Microsoft preferred way to do it I guess.
@@ -235,7 +100,7 @@ ATOM RegisterMainClass(HINSTANCE hInstance) {
 	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
 	wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
 	wcex.lpszMenuName = NULL;
-	wcex.lpszClassName = g_szMainClass;
+	wcex.lpszClassName = szCLASS;
 	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_MAINICON));
 	return RegisterClassEx(&wcex);
 }
@@ -243,7 +108,7 @@ ATOM RegisterMainClass(HINSTANCE hInstance) {
 LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch (msg) {
 	case WM_CREATE:
-		CreateClock(hwnd);
+		CreateClockControl(hwnd);
 		if (DVDLogo()) {
 			SetTimer(hwnd, TIMER_ID, 16, NULL); // If the DVD logo effect is used, draw at 60 FPS
 		}
@@ -293,12 +158,12 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
 		}
 		else if (wParam == VK_F1) {
 			wprintf(L"Creating about window.\r\n");
-			g_Context = _CONTEXT_ABOUT_;
+			g_Context = __CONTEXT_ABOUT__;
 			InitAbout();
 		}
 		else if (wParam == VK_F2) {
 			wprintf(L"Creating settings window.\r\n");
-			g_Context = _CONTEXT_SETTINGS_;
+			g_Context = __CONTEXT_SETTINGS__;
 			InitSettings();
 		}
 		else if (wParam == VK_F11) {
@@ -309,12 +174,12 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
 	case WM_COMMAND:
 		if (LOWORD(wParam) == ID_ABOUT_MENU_BTN) {
 			wprintf(L"Creating about window.\r\n");
-			g_Context = _CONTEXT_ABOUT_;
+			g_Context = __CONTEXT_ABOUT__;
 			InitAbout();
 		}
 		else if (LOWORD(wParam) == ID_SETTINGS_MENU_BTN) {
 			wprintf(L"Creating settings window.\r\n");
-			g_Context = _CONTEXT_SETTINGS_;
+			g_Context = __CONTEXT_SETTINGS__;
 			InitSettings();
 		}
 		break;
@@ -504,7 +369,7 @@ BOOL RenderText(LPARAM lParam) {
 	}
 }
 
-void CreateClock(HWND hwnd) {
+void CreateClockControl(HWND hwnd) {
 	// Simply creates the clock control.
 	wprintf(L"Creating clock control...\r\n");
 	g_hWndClockOut = CreateWindowW(WC_STATIC, L"Please wait while clock initializes...", WS_CHILD | WS_VISIBLE | SS_CENTER | SS_OWNERDRAW, 0, 0, 0, 0, hwnd, NULL, g_hInst, NULL);

@@ -114,7 +114,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <WarningLevel>Level4</WarningLevel>
+      <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
@@ -146,6 +146,8 @@
     <ClCompile Include="Clock.c" />
     <ClCompile Include="Config.c" />
     <ClCompile Include="Drawing.cc" />
+    <ClCompile Include="Instance.c" />
+    <ClCompile Include="Main.c" />
     <ClCompile Include="NTPClient.c" />
     <ClCompile Include="SettingsWindow.c" />
     <ClCompile Include="TrayIcon.c" />
@@ -156,6 +158,7 @@
     <ClInclude Include="Config.h" />
     <ClInclude Include="Colors.h" />
     <ClInclude Include="Drawing.h" />
+    <ClInclude Include="Instance.h" />
     <ClInclude Include="MathHelpers.h" />
     <ClInclude Include="NTPClient.h" />
     <ClInclude Include="resource.h" />

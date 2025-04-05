@@ -25,6 +25,8 @@
 #include "Clock.h"
 #include "MathHelpers.h"
 
+#define g_szRegKey L"Software\\Jamie\\Clock\\Settings" // Constant string for getting where the registry values for settings are stored. Based off of the following format: 'Software\Company Name\Application Name\Settings'
+
 // Structure to hold registry values to hopefully optimize the memory footprint.
 // Prevents repeated calls of Registry keys to check the value
 typedef struct __Config {
